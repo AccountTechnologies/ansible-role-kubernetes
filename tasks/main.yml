@@ -1,12 +1,154 @@
 ---
+- name: is install only
+  debug:
+    var: kubernetes_install_only
+
+  when: kubernetes_install_only is not defined or kubernetes_install_only == true
+  when: ansible_os_family == 'RedHat' and (kubernetes_install_only is not defined or kubernetes_install_only == true)
+  when: ansible_os_family == 'Debian' and (kubernetes_install_only is not defined or kubernetes_install_only == true)
+  when: kubernetes_install_only is not defined or kubernetes_install_only == true
+  with_items: "{{ kubernetes_packages | json_query(\"[?name=='kubeadm']\")  }}"
+  when: kubernetes_install_only is not defined or kubernetes_install_only == true
+
+- name: Install Kubernetes packages.
+  package:
+    name: "{{ item.name | default(item) }}"
+    state: "{{ item.state | default('present') }}"
+  when: kubernetes_install_only is not defined
+  when: kubernetes_install_only is not defined
+  when: kubernetes_install_only is not defined
+- name: Get current cluster state
+  include_tasks: find-cluster-state.yml
+  #when: (kubernetes_install_only is not defined) 
+  when: inventory_hostname in groups['clusters'] and kubernetes_install_only is not defined
+
+- name: Get k_master
+  debug:
+    var: kubernetes_kubelet_extra_args 
+  when: kubernetes_install_only is not defined
+
+- name: Get k_master
+  debug:
+    var: k_master 
+  when: kubernetes_install_only is not defined
+
+- name: Get k_master_state
+  debug:
+    var: k_master_state
+  when: kubernetes_install_only is not defined
+
+- name: Set the kubeadm kubernetes_master_node globally.
+  set_fact:
+    kubernetes_master_node: "{{ k_master }}"
+  when: kubernetes_install_only is not defined
+
+- name: Set the kubeadm kubernetes_master_node_state globally.
+  set_fact:
+    kubernetes_master_node_state: "{{ k_master_state }}"
+  when: kubernetes_install_only is not defined
+
+- name: Get kubernetes_master_node
+  debug:
+    var: kubernetes_master_node 
+  when: kubernetes_install_only is not defined
+- name: Stop all KeepAlive on nodes not primary master when not setup
+  shell: systemctl stop keepalived
+  ignore_errors: true 
+  when: kubernetes_role == 'master' 
+        and (kubernetes_install_only is not defined) 
+        and ( inventory_hostname != kubernetes_master_node )
+
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and ( inventory_hostname == kubernetes_master_node )
+        and (kubernetes_master_node_state != 'ready')
+
+- name: Re-Start all KeepAlive on nodes
+  shell: systemctl restart keepalived
+  ignore_errors: true 
+  when: kubernetes_role == 'master' 
+        and (kubernetes_install_only is not defined) 
+        and ( inventory_hostname != kubernetes_master_node )
+#asume the master is setup
+- name: Script keepalived.conf
+  blockinfile:
+    path: /etc/kubernetes/metallb_ip_config.conf
+    mode: 0644
+    create: yes
+    block: |
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            namespace: metallb-system
+            name: config
+          data:
+            config: |
+              address-pools:
+              - name: default
+                protocol: layer2
+                addresses:
+                - {{ kubernetes_loadbalancer_vips }}
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and inventory_hostname == kubernetes_master_node
+
+- name: Get the kubernetes_master_node Kubernetes master.
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and inventory_hostname == kubernetes_master_node
+  when: kubernetes_join_command_result.stdout is defined  and (kubernetes_install_only is not defined)
+  when: kubernetes_role == 'node'  and (kubernetes_install_only is not defined)
+
+- include_tasks: master-node-setup.yml
+  when: kubernetes_role == 'master'  and (kubernetes_install_only is not defined) and inventory_hostname != kubernetes_master_node
+
+- name: Start all KeepAlive on nodes not primary master
+  shell: systemctl start keepalived
+  ignore_errors: true 
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and ( inventory_hostname != kubernetes_master_node )
+
+- name: Start all KeepAlive on nodes not primary master
+  set_fact:
+    metal_lb_config: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          namespace: metallb-system
+          name: config
+        data:
+          config: |
+            address-pools:
+            - name: default
+              protocol: layer2
+              addresses:
+              - {{ kubernetes_loadbalancer_vips }}
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and inventory_hostname == kubernetes_master_node
+        and kubernetes_loadbalancer_vips is defined
+
+- name: Creates tmp (if not exist)
+  file:
+    path: "/tmp"
+    state: directory
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and inventory_hostname == kubernetes_master_node
+        and kubernetes_loadbalancer_vips is defined
+        
+- name: write-metal_lb_config-file
+  copy: 
+    content: "{{ metal_lb_config }}"
+    dest: "/tmp/metal_lb_config.yaml"
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and inventory_hostname == kubernetes_master_node
+        and kubernetes_loadbalancer_vips is defined
+  
+- name: Start all KeepAlive on nodes not primary master
+  shell: "kubectl apply -f /tmp/metal_lb_config.yaml "
+  when: metal_lb_config is defined
 - name: Include OS-specific variables.
   include_vars: "{{ ansible_os_family }}.yml"
 
 - include_tasks: setup-RedHat.yml
-  when: ansible_os_family == 'RedHat'
 
 - include_tasks: setup-Debian.yml
-  when: ansible_os_family == 'Debian'
 
 - name: Ensure dependencies are installed.
   package: name=curl state=present
@@ -26,29 +168,20 @@
     state: started
     enabled: true
 
-- name: Check if Kubernetes has already been initialized.
-  stat:
-    path: /etc/kubernetes/admin.conf
-  register: kubernetes_init_stat
 
 # Set up master.
 - include_tasks: master-setup.yml
-  when: kubernetes_role == 'master'
 
 # Set up nodes.
-- name: Get the kubeadm join command from the Kubernetes master.
   command: kubeadm token create --print-join-command
   changed_when: false
-  when: kubernetes_role == 'master'
   register: kubernetes_join_command_result
 
 - name: Set the kubeadm join command globally.
   set_fact:
     kubernetes_join_command: "{{ kubernetes_join_command_result.stdout }}"
-  when: kubernetes_join_command_result.stdout is defined
   delegate_to: "{{ item }}"
   delegate_facts: true
   with_items: "{{ groups['all'] }}"
 
 - include_tasks: node-setup.yml
-  when: kubernetes_role == 'node'

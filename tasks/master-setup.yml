@@ -1,22 +1,58 @@
 ---
+
+    kubeadm init 
+    --apiserver-advertise-address={{hostvars[inventory_hostname].internal_network_ip}}
+    --control-plane-endpoint={{ kubernetes_master_vip }}:6443
+    --kubernetes-version={{ kubernetes_version_kubeadm }}
+    --upload-certs
+  register: results
+- name: write-key-file
+  copy: 
+    content: "{{ results.stdout | regex_search('(?:--certificate-key) (?:)(.{1,})' | string) | regex_replace('--certificate-key ','') }}"
+    dest: "{{ kubernetes_secrets_dir }}{{kubernetes_cluster_name}}_cert_key.key"
+  delegate_to: 127.0.0.1
+- name: read aconfig
+  shell: cat /etc/kubernetes/admin.conf
+  register: admin_conf
+  become: yes
+  when: inventory_hostname in groups['kubernetes_master']
+
+- name: write-key-file
+  copy: 
+    content: "{{ admin_conf.stdout }}"
+    dest: "{{ kubernetes_secrets_dir }}{{kubernetes_cluster_name}}_config"
+  delegate_to: 127.0.0.1
+  when: admin_conf is defined and inventory_hostname in groups['kubernetes_master']
+
+# - name: debug results
+#   debug:
+#     var: results
+
+# - fail:
+#     msg: Just failing because.
+#   when: results is defined
+
+- name: Configure Post Init YAML networking.
+  command: "kubectl apply -f {{ item.local_address }}"
+    - "{{ kuberbetes_yaml }}"
+
+- name: Configure Post Init Commands networking.
+  command: "{{ item.command }}"
+  with_items:
+    - "{{ kuberbetes_commands }}"
+
+- name: Wait for cluster ready
+  shell: kubectl get nodes | awk $2 -F ' ' 'NR>1{print $2}'
+  register: result
+  until: result.stdout.find("Ready") != -1
+  retries: 5
+  delay: 20
 - name: Initialize Kubernetes master with kubeadm init.
   command: >
-    kubeadm init
     --pod-network-cidr={{ kubernetes_pod_network_cidr }}
-    --apiserver-advertise-address={{ kubernetes_apiserver_advertise_address | default(ansible_default_ipv4.address, true) }}
-    --kubernetes-version {{ kubernetes_version_kubeadm }}
     --ignore-preflight-errors={{ kubernetes_ignore_preflight_errors }}
     {{ kubernetes_kubeadm_init_extra_opts }}
 
-  register: kubeadmin_init
-  failed_when: false
-  when: not kubernetes_init_stat.stat.exists
-
-- name: Print the init output to screen.
-  debug:
-    var: kubeadmin_init.stdout
-    verbosity: 2
-  when: not kubernetes_init_stat.stat.exists
 
 - name: Ensure .kube directory exists.
   file:
@@ -29,11 +65,7 @@
     dest: ~/.kube/config
     state: link
 
-- name: Configure Flannel networking.
-  command: "{{ item }}"
   with_items:
-    - kubectl apply -f {{ kubernetes_flannel_manifest_file_rbac }}
-    - kubectl apply -f {{ kubernetes_flannel_manifest_file }}
   register: flannel_result
   changed_when: "'created' in flannel_result.stdout"
 

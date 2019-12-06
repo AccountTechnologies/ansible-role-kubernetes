@@ -16,6 +16,7 @@
     kubelet_args_path: '/etc/systemd/system/kubelet.service.d/10-kubeadm.conf'
     kubelet_args_line: "{{ 'Environment=\"KUBELET_EXTRA_ARGS=' + kubernetes_kubelet_extra_args + '\"' }}"
     kubelet_args_regexp: '^Environment="KUBELET_EXTRA_ARGS='
+    kubelet_args_insertbefore_regexp: '^ExecStart='
   when: not kubelet_environment_file.stat.exists
 
 - name: Configure KUBELET_EXTRA_ARGS.
@@ -23,6 +24,7 @@
     path: '{{ kubelet_args_path }}'
     line: '{{ kubelet_args_line }}'
     regexp: '{{ kubelet_args_regexp }}'
+    insertbefore: '{{ kubelet_args_insertbefore_regexp }}'
     state: present
   register: kubelet_config_file
 

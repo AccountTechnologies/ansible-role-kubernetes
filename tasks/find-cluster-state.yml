@@ -1,0 +1,123 @@
+---
+
+- name: "Default clusters"
+  set_fact:
+    clusters: "{{ clusters|default([]) }}"
+
+- name: Check if Kubernetes admin.conf exits.
+  stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubernetes_init_stat
+
+- name: Check Type of Kubernetes Node exits.
+  shell: kubectl --kubeconfig=/etc/kubernetes/admin.conf  get nodes --no-headers
+  register: kubernetes_nodes_output
+  ignore_errors: true
+
+- name: get current node type
+  set_fact: 
+    node_type: 'master'
+  when: inventory_hostname in groups['kubernetes_master']
+- name: get current node type
+  set_fact: 
+    node_type: 'node'
+  when: inventory_hostname in groups['kubernetes_node']
+  
+- name: Populate clusters
+  set_fact:
+    cluster: >-
+      {%- set _cluster={'name': kubernetes_cluster_name , 'hosts': [] } -%}
+      {%- if kubernetes_nodes_output is defined -%}
+        {%- for item in kubernetes_nodes_output.stdout_lines -%}
+          {%- set _ = _cluster.hosts.append({'host': (item.split('  ')[0].split('.')[0]|trim) , 'state': (item.split('  ')[1]|lower|trim) , 'node_type': (item.split('  ')[2]|lower|trim) }) -%}
+        {%- endfor -%}
+      {%- endif -%}
+      {%-   set ns = namespace(host_found=false) -%}
+      {%- for host in _cluster.hosts -%}
+        {%- if host['host'] == inventory_hostname -%}
+          {%- set ns.host_found = true -%}
+        {% endif -%}
+      {%- endfor -%}
+      {%- if ns.host_found == false -%}
+          {%- set _ = _cluster.hosts.append( { 'host': inventory_hostname, 'state':'', 'node_type': node_type } ) -%}
+      {%- endif -%}
+      {{ _cluster }}
+
+- name: debug cluster 
+  debug: 
+    var: cluster
+  when: inventory_hostname in groups['clusters']
+
+- name: Define all_clusters
+  set_fact: 
+    all_clusters: |
+        {%-   set _clusters = [] -%}
+        {%-   set ns = namespace(cluster_found=false, host_found=false) -%}
+        {%-   for hv in play_hosts: -%}
+        {%-       set ns.cluster_found=false -%}
+        {%-       for cluster in _clusters: -%}
+        {%-           if cluster.get('name', None) == hostvars[hv].cluster['name']: -%}
+        {%-               set ns.cluster_found=true -%}
+        {%-               for item_host in hostvars[hv].cluster['hosts']: -%}
+        {%-                   set ns.host_found=false -%}
+        {%-                   for host in cluster['hosts']: -%}
+        {%-                       if item_host['host'] == host['host']: -%}
+        {%-                           set ns.host_found=true -%}
+        {%-                           if (item_host['node_type'] != host['node_type']): -%}
+        {%-                             set _ = host.update({ 'node_type': item_host['node_type'] } ) -%}
+        {%-                           endif -%}
+        {%-                        endif -%}
+        {%-                   endfor -%}
+        {%-                   if ns.host_found==false: -%}
+        {%-                       set _ = cluster['hosts'].append(item_host) -%}
+        {%-                   endif -%}
+        {%-               endfor -%}
+        {%-            endif -%}
+        {%-       endfor -%}
+        {%-       if (ns.cluster_found==false): -%}
+        {%-           set _ = _clusters.append(hostvars[hv].cluster) -%}
+        {%-       endif -%}
+        {%-   endfor -%} 
+        {{ _clusters }}
+  when: inventory_hostname in groups['clusters']
+
+- name: debug all_clusters
+  debug: 
+    var: all_clusters
+
+- name: debug kubernetes_cluster_name
+  debug: 
+    var: kubernetes_cluster_name
+
+- name: debug kubernetes_cluster_name 127.0.0.1
+  debug: 
+    var: kubernetes_cluster_name
+  delegate_to: 127.0.0.1
+  run_once: yes
+
+- name: set k_master
+  set_fact: 
+    k_master: "{{ all_clusters | json_query(\"[?name=='\" + kubernetes_cluster_name + \"'].hosts[]|[?node_type=='master']|[?state=='ready'].host\") | first | default() }}"
+  delegate_to: 127.0.0.1
+  run_once: yes
+
+- name: set k_master (not ready)
+  set_fact: 
+    k_master: "{{ all_clusters | json_query(\"[?name=='\" + kubernetes_cluster_name + \"'].hosts[]|[?node_type=='master'].host\") | first | default() }}"
+  delegate_to: 127.0.0.1
+  run_once: yes
+  when: (k_master is not defined) or (k_master|length == 0)
+
+- name: set k_master_state (not ready)
+  set_fact: 
+    k_master_state: "{{ all_clusters | json_query(\"[?name=='\" + kubernetes_cluster_name + \"'].hosts[]|[?host=='\" + k_master + \"'].state\") | first | default() }}"
+  delegate_to: 127.0.0.1
+  run_once: yes
+
+- name: debug k_master 
+  debug: 
+    var: k_master
+
+- name: debug k_master 
+  debug: 
+    var: k_master_state
