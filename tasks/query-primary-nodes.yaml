@@ -1,0 +1,8 @@
+---
+- name: test
+  debug:
+    var: kubernetes_install_only
+
+- name: Include OS-specific variables.
+  include_vars: "{{ ansible_os_family }}.yml"
+  when: kubernetes_install_only is not defined or kubernetes_install_only == true

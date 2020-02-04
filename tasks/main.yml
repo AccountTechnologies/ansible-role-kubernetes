@@ -1,12 +1,26 @@
 ---
-- name: is install only
+- name: test
   debug:
     var: kubernetes_install_only
 
+- name: Include OS-specific variables.
+  include_vars: "{{ ansible_os_family }}.yml"
   when: kubernetes_install_only is not defined or kubernetes_install_only == true
+
+- include_tasks: setup-RedHat.yml
   when: ansible_os_family == 'RedHat' and (kubernetes_install_only is not defined or kubernetes_install_only == true)
+
+- include_tasks: setup-Debian.yml
   when: ansible_os_family == 'Debian' and (kubernetes_install_only is not defined or kubernetes_install_only == true)
+
+- name: Ensure dependencies are installed.
+  package: name=curl state=present
   when: kubernetes_install_only is not defined or kubernetes_install_only == true
+
+- name: Install Kubernetes packages.
+  package:
+    name: "{{ item.name | default(item) }}"
+    state: "{{ item.state | default('present') }}"
   with_items: "{{ kubernetes_packages | json_query(\"[?name=='kubeadm']\")  }}"
   when: kubernetes_install_only is not defined or kubernetes_install_only == true
 
@@ -14,9 +28,20 @@
   package:
     name: "{{ item.name | default(item) }}"
     state: "{{ item.state | default('present') }}"
+  notify: restart kubelet
+  with_items: "{{ kubernetes_packages }}"
   when: kubernetes_install_only is not defined
+
+- include_tasks: kubelet-setup.yml
   when: kubernetes_install_only is not defined
+
+- name: Ensure kubelet is started and enabled at boot.
+  service:
+    name: kubelet
+    state: started
+    enabled: true
   when: kubernetes_install_only is not defined
+
 - name: Get current cluster state
   include_tasks: find-cluster-state.yml
   #when: (kubernetes_install_only is not defined) 
@@ -51,6 +76,7 @@
   debug:
     var: kubernetes_master_node 
   when: kubernetes_install_only is not defined
+
 - name: Stop all KeepAlive on nodes not primary master when not setup
   shell: systemctl stop keepalived
   ignore_errors: true 
@@ -58,6 +84,8 @@
         and (kubernetes_install_only is not defined) 
         and ( inventory_hostname != kubernetes_master_node )
 
+# Set up master.
+- include_tasks: master-setup.yml
   when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
         and ( inventory_hostname == kubernetes_master_node )
         and (kubernetes_master_node_state != 'ready')
@@ -68,6 +96,7 @@
   when: kubernetes_role == 'master' 
         and (kubernetes_install_only is not defined) 
         and ( inventory_hostname != kubernetes_master_node )
+
 #asume the master is setup
 - name: Script keepalived.conf
   blockinfile:
@@ -90,10 +119,23 @@
   when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
         and inventory_hostname == kubernetes_master_node
 
+# Set up nodes.
 - name: Get the kubernetes_master_node Kubernetes master.
+  command: kubeadm token create --print-join-command
+  changed_when: false
   when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
         and inventory_hostname == kubernetes_master_node
+  register: kubernetes_join_command_result
+
+- name: Set the kubeadm join command globally.
+  set_fact:
+    kubernetes_join_command: "{{ kubernetes_join_command_result.stdout }}"
   when: kubernetes_join_command_result.stdout is defined  and (kubernetes_install_only is not defined)
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  with_items: "{{ groups['all'] }}"
+
+- include_tasks: node-setup.yml
   when: kubernetes_role == 'node'  and (kubernetes_install_only is not defined)
 
 - include_tasks: master-node-setup.yml
@@ -143,45 +185,3 @@
 - name: Start all KeepAlive on nodes not primary master
   shell: "kubectl apply -f /tmp/metal_lb_config.yaml "
   when: metal_lb_config is defined
-- name: Include OS-specific variables.
-  include_vars: "{{ ansible_os_family }}.yml"
-
-- include_tasks: setup-RedHat.yml
-
-- include_tasks: setup-Debian.yml
-
-- name: Ensure dependencies are installed.
-  package: name=curl state=present
-
-- name: Install Kubernetes packages.
-  package:
-    name: "{{ item.name | default(item) }}"
-    state: "{{ item.state | default('present') }}"
-  notify: restart kubelet
-  with_items: "{{ kubernetes_packages }}"
-
-- include_tasks: kubelet-setup.yml
-
-- name: Ensure kubelet is started and enabled at boot.
-  service:
-    name: kubelet
-    state: started
-    enabled: true
-
-
-# Set up master.
-- include_tasks: master-setup.yml
-
-# Set up nodes.
-  command: kubeadm token create --print-join-command
-  changed_when: false
-  register: kubernetes_join_command_result
-
-- name: Set the kubeadm join command globally.
-  set_fact:
-    kubernetes_join_command: "{{ kubernetes_join_command_result.stdout }}"
-  delegate_to: "{{ item }}"
-  delegate_facts: true
-  with_items: "{{ groups['all'] }}"
-
-- include_tasks: node-setup.yml

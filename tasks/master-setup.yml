@@ -1,16 +1,34 @@
 ---
 
+- name: Initialize Kubernetes master with kubeadm init.
+  command: >
     kubeadm init 
+    --pod-network-cidr={{ kubernetes_pod_network_cidr }}
     --apiserver-advertise-address={{hostvars[inventory_hostname].internal_network_ip}}
     --control-plane-endpoint={{ kubernetes_master_vip }}:6443
     --kubernetes-version={{ kubernetes_version_kubeadm }}
+    --ignore-preflight-errors={{ kubernetes_ignore_preflight_errors }}
     --upload-certs
+    {{ kubernetes_kubeadm_init_extra_opts }}
   register: results
+
 - name: write-key-file
   copy: 
     content: "{{ results.stdout | regex_search('(?:--certificate-key) (?:)(.{1,})' | string) | regex_replace('--certificate-key ','') }}"
     dest: "{{ kubernetes_secrets_dir }}{{kubernetes_cluster_name}}_cert_key.key"
   delegate_to: 127.0.0.1
+
+- name: Ensure .kube directory exists.
+  file:
+    path: ~/.kube
+    state: directory
+
+- name: Symlink the kubectl admin.conf to ~/.kube/conf.
+  file:
+    src: /etc/kubernetes/admin.conf
+    dest: ~/.kube/config
+    state: link
+
 - name: read aconfig
   shell: cat /etc/kubernetes/admin.conf
   register: admin_conf
@@ -34,38 +52,8 @@
 
 - name: Configure Post Init YAML networking.
   command: "kubectl apply -f {{ item.local_address }}"
+  with_items:
     - "{{ kuberbetes_yaml }}"
-
-- name: Configure Post Init Commands networking.
-  command: "{{ item.command }}"
-  with_items:
-    - "{{ kuberbetes_commands }}"
-
-- name: Wait for cluster ready
-  shell: kubectl get nodes | awk $2 -F ' ' 'NR>1{print $2}'
-  register: result
-  until: result.stdout.find("Ready") != -1
-  retries: 5
-  delay: 20
-- name: Initialize Kubernetes master with kubeadm init.
-  command: >
-    --pod-network-cidr={{ kubernetes_pod_network_cidr }}
-    --ignore-preflight-errors={{ kubernetes_ignore_preflight_errors }}
-    {{ kubernetes_kubeadm_init_extra_opts }}
-
-
-- name: Ensure .kube directory exists.
-  file:
-    path: ~/.kube
-    state: directory
-
-- name: Symlink the kubectl admin.conf to ~/.kube/conf.
-  file:
-    src: /etc/kubernetes/admin.conf
-    dest: ~/.kube/config
-    state: link
-
-  with_items:
   register: flannel_result
   changed_when: "'created' in flannel_result.stdout"
 
@@ -89,3 +77,15 @@
   when:
     - kubernetes_enable_web_ui | bool
     - kubernetes_dashboard_service is failed
+
+- name: Configure Post Init Commands networking.
+  command: "{{ item.command }}"
+  with_items:
+    - "{{ kuberbetes_commands }}"
+
+- name: Wait for cluster ready
+  shell: kubectl get nodes | awk $2 -F ' ' 'NR>1{print $2}'
+  register: result
+  until: result.stdout.find("Ready") != -1
+  retries: 5
+  delay: 20
