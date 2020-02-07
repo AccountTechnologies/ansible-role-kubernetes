@@ -17,11 +17,11 @@
 - name: get current node type
   set_fact: 
     node_type: 'master'
-  when: inventory_hostname in groups['kubernetes_master']
+  when: inventory_hostname in groups['kubernetes-master']
 - name: get current node type
   set_fact: 
     node_type: 'node'
-  when: inventory_hostname in groups['kubernetes_node']
+  when: inventory_hostname in groups['kubernetes-node']
   
 - name: Populate clusters
   set_fact:
