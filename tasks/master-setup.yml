@@ -18,6 +18,20 @@
     dest: "{{ kubernetes_secrets_dir }}{{kubernetes_cluster_name}}_cert_key.key"
   delegate_to: 127.0.0.1
 
+- name: read aconfig
+  shell: cat /etc/kubernetes/admin.conf
+  register: admin_conf
+  become: yes
+  when: inventory_hostname in groups['kubernetes-master']
+
+  
+- name: write-key-file
+  copy: 
+    content: "{{ admin_conf.stdout }}"
+    dest: "{{ kubernetes_secrets_dir }}{{kubernetes_cluster_name}}_config"
+  delegate_to: 127.0.0.1
+  when: admin_conf is defined and inventory_hostname in groups['kubernetes-master']
+
 - name: Ensure .kube directory exists.
   file:
     path: ~/.kube
@@ -28,19 +42,6 @@
     src: /etc/kubernetes/admin.conf
     dest: ~/.kube/config
     state: link
-
-- name: read aconfig
-  shell: cat /etc/kubernetes/admin.conf
-  register: admin_conf
-  become: yes
-  when: inventory_hostname in groups['kubernetes-master']
-
-- name: write-key-file
-  copy: 
-    content: "{{ admin_conf.stdout }}"
-    dest: "{{ kubernetes_secrets_dir }}{{kubernetes_cluster_name}}_config"
-  delegate_to: 127.0.0.1
-  when: admin_conf is defined and inventory_hostname in groups['kubernetes-master']
 
 # - name: debug results
 #   debug:

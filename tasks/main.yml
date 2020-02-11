@@ -13,9 +13,18 @@
 - include_tasks: setup-Debian.yml
   when: ansible_os_family == 'Debian' and (kubernetes_install_only is not defined or kubernetes_install_only == true)
 
+# - fail:
+#     msg: "stop here to check"
+#   when: kubernetes_install_only is not defined
+
 - name: Ensure dependencies are installed.
   package: name=curl state=present
   when: kubernetes_install_only is not defined or kubernetes_install_only == true
+
+# - fail:
+#     msg: "stop here to check"
+#   when: kubernetes_install_only is not defined
+
 
 - name: Install Kubernetes packages.
   package:
@@ -23,6 +32,11 @@
     state: "{{ item.state | default('present') }}"
   with_items: "{{ kubernetes_packages | json_query(\"[?name=='kubeadm']\")  }}"
   when: kubernetes_install_only is not defined or kubernetes_install_only == true
+
+# - fail:
+#     msg: "stop here to check"
+#   when: kubernetes_install_only is not defined
+
 
 - name: Install Kubernetes packages.
   package:
@@ -32,8 +46,18 @@
   with_items: "{{ kubernetes_packages }}"
   when: kubernetes_install_only is not defined
 
+# - fail:
+#     msg: "stop here to check"
+#   when: kubernetes_install_only is not defined
+
+
 - include_tasks: kubelet-setup.yml
   when: kubernetes_install_only is not defined
+
+# - fail:
+#     msg: "stop here to check"
+#   when: kubernetes_install_only is not defined
+
 
 - name: Ensure kubelet is started and enabled at boot.
   service:
@@ -42,10 +66,20 @@
     enabled: true
   when: kubernetes_install_only is not defined
 
+# - fail:
+#     msg: "stop here to check"
+#   when: kubernetes_install_only is not defined
+
+
 - name: Get current cluster state
   include_tasks: find-cluster-state.yml
   #when: (kubernetes_install_only is not defined) 
   when: inventory_hostname in groups['clusters'] and kubernetes_install_only is not defined
+
+# - fail:
+#     msg: "stop here to check"
+#   when: kubernetes_install_only is not defined
+
 
 - name: Get k_master
   debug:
@@ -75,7 +109,10 @@
 - name: Get kubernetes_master_node
   debug:
     var: kubernetes_master_node 
-  when: kubernetes_install_only is not defined
+
+# - fail:
+#     msg: "stop here to check"
+#   when: kubernetes_install_only is not defined
 
 - name: Stop all KeepAlive on nodes not primary master when not setup
   shell: systemctl stop keepalived
@@ -83,6 +120,10 @@
   when: kubernetes_role == 'master' 
         and (kubernetes_install_only is not defined) 
         and ( inventory_hostname != kubernetes_master_node )
+
+# - fail:
+#     msg: "stop here to check"
+#   when: kubernetes_install_only is not defined
 
 # Set up master.
 - include_tasks: master-setup.yml
@@ -97,8 +138,12 @@
         and (kubernetes_install_only is not defined) 
         and ( inventory_hostname != kubernetes_master_node )
 
+# - fail:
+#     msg: "stop here to check"
+#   when: kubernetes_install_only is not defined
+
 #asume the master is setup
-- name: Script keepalived.conf
+- name: Script metallb_ip_config.conf
   blockinfile:
     path: /etc/kubernetes/metallb_ip_config.conf
     mode: 0644
@@ -134,6 +179,10 @@
   delegate_to: "{{ item }}"
   delegate_facts: true
   with_items: "{{ groups['all'] }}"
+
+- name: what is role
+  debug:
+    var: kubernetes_role
 
 - include_tasks: node-setup.yml
   when: kubernetes_role == 'node'  and (kubernetes_install_only is not defined)

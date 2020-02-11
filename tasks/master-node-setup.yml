@@ -6,5 +6,11 @@
     --certificate-key={{ lookup('file', '{{ kubernetes_secrets_dir }}{{kubernetes_cluster_name}}_cert_key.key') }}
     --apiserver-advertise-address={{hostvars[inventory_hostname].internal_network_ip}}
     creates=/etc/kubernetes/kubelet.conf
-  when: k_master_state is not defined or k_master_state != "ready"
-  tags: ['skip_ansible_lint']
+  when: k_master_state_self is not defined or k_master_state_self != "ready"
+
+# - name: Join master node to Kubernetes master
+#   shell: >
+#     {{ kubernetes_join_command }} 
+#     --control-plane
+#     creates=/etc/kubernetes/kubelet.conf
+#   when: k_master_state_self is not defined or k_master_state_self != "ready"

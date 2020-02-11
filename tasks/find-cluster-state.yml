@@ -18,6 +18,7 @@
   set_fact: 
     node_type: 'master'
   when: inventory_hostname in groups['kubernetes-master']
+
 - name: get current node type
   set_fact: 
     node_type: 'node'
@@ -29,7 +30,7 @@
       {%- set _cluster={'name': kubernetes_cluster_name , 'hosts': [] } -%}
       {%- if kubernetes_nodes_output is defined -%}
         {%- for item in kubernetes_nodes_output.stdout_lines -%}
-          {%- set _ = _cluster.hosts.append({'host': (item.split('  ')[0].split('.')[0]|trim) , 'state': (item.split('  ')[1]|lower|trim) , 'node_type': (item.split('  ')[2]|lower|trim) }) -%}
+          {%- set _ = _cluster.hosts.append({'host': (item.split('  ')[0]|trim) , 'state': (item.split('  ')[1]|lower|trim) , 'node_type': (item.split('  ')[2]|lower|trim) }) -%}
         {%- endfor -%}
       {%- endif -%}
       {%-   set ns = namespace(host_found=false) -%}
@@ -89,35 +90,53 @@
   debug: 
     var: kubernetes_cluster_name
 
-- name: debug kubernetes_cluster_name 127.0.0.1
-  debug: 
-    var: kubernetes_cluster_name
-  delegate_to: 127.0.0.1
-  run_once: yes
+- name: debug cluster hosts
+  set_fact:
+    k_cluster_hosts: "{{ all_clusters | json_query(\"[?name=='\" + kubernetes_cluster_name + \"'].hosts[]\") }}"
 
+- name: debug k_cluster_hosts
+  debug: 
+    var: k_cluster_hosts
+    
 - name: set k_master
   set_fact: 
     k_master: "{{ all_clusters | json_query(\"[?name=='\" + kubernetes_cluster_name + \"'].hosts[]|[?node_type=='master']|[?state=='ready'].host\") | first | default() }}"
-  delegate_to: 127.0.0.1
-  run_once: yes
+  #delegate_to: 127.0.0.1
 
-- name: set k_master (not ready)
+- name: debug k_master (0)
+  debug: 
+    var: k_master
+
+- name: set k_master
   set_fact: 
     k_master: "{{ all_clusters | json_query(\"[?name=='\" + kubernetes_cluster_name + \"'].hosts[]|[?node_type=='master'].host\") | first | default() }}"
-  delegate_to: 127.0.0.1
-  run_once: yes
+  #delegate_to: 127.0.0.1
   when: (k_master is not defined) or (k_master|length == 0)
+  
+- name: debug k_master (1)
+  debug: 
+    var: k_master
 
-- name: set k_master_state (not ready)
+- name: set k_master_state
   set_fact: 
     k_master_state: "{{ all_clusters | json_query(\"[?name=='\" + kubernetes_cluster_name + \"'].hosts[]|[?host=='\" + k_master + \"'].state\") | first | default() }}"
-  delegate_to: 127.0.0.1
-  run_once: yes
+  #delegate_to: 127.0.0.1
+ 
+- name: set k_master_state_self
+  set_fact: 
+    k_master_state_self: "{{ all_clusters | json_query(\"[?name=='\" + kubernetes_cluster_name + \"'].hosts[]|[?host=='\" + inventory_hostname + \"'].state\") | first | default() }}"
 
 - name: debug k_master 
   debug: 
     var: k_master
 
-- name: debug k_master 
+- name: debug k_master_state 
   debug: 
     var: k_master_state
+
+- name: debug k_master_state_self 
+  debug: 
+    var: k_master_state_self
+
+# - fail:
+#     msg: "bout time"
