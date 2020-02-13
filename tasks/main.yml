@@ -110,59 +110,11 @@
   debug:
     var: kubernetes_master_node 
 
-# - fail:
-#     msg: "stop here to check"
-#   when: kubernetes_install_only is not defined
-
-- name: Stop all KeepAlive on nodes not primary master when not setup
-  shell: systemctl stop keepalived
-  ignore_errors: true 
-  when: kubernetes_role == 'master' 
-        and (kubernetes_install_only is not defined) 
-        and ( inventory_hostname != kubernetes_master_node )
-
-# - fail:
-#     msg: "stop here to check"
-#   when: kubernetes_install_only is not defined
-
 # Set up master.
 - include_tasks: master-setup.yml
   when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
         and ( inventory_hostname == kubernetes_master_node )
         and (kubernetes_master_node_state != 'ready')
-
-- name: Re-Start all KeepAlive on nodes
-  shell: systemctl restart keepalived
-  ignore_errors: true 
-  when: kubernetes_role == 'master' 
-        and (kubernetes_install_only is not defined) 
-        and ( inventory_hostname != kubernetes_master_node )
-
-# - fail:
-#     msg: "stop here to check"
-#   when: kubernetes_install_only is not defined
-
-#asume the master is setup
-- name: Script metallb_ip_config.conf
-  blockinfile:
-    path: /etc/kubernetes/metallb_ip_config.conf
-    mode: 0644
-    create: yes
-    block: |
-          apiVersion: v1
-          kind: ConfigMap
-          metadata:
-            namespace: metallb-system
-            name: config
-          data:
-            config: |
-              address-pools:
-              - name: default
-                protocol: layer2
-                addresses:
-                - {{ kubernetes_loadbalancer_vips }}
-  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
-        and inventory_hostname == kubernetes_master_node
 
 # Set up nodes.
 - name: Get the kubernetes_master_node Kubernetes master.
@@ -176,61 +128,17 @@
   set_fact:
     kubernetes_join_command: "{{ kubernetes_join_command_result.stdout }}"
   when: kubernetes_join_command_result.stdout is defined  and (kubernetes_install_only is not defined)
+          and hostvars[item]['k_master'] == inventory_hostname
   delegate_to: "{{ item }}"
   delegate_facts: true
-  with_items: "{{ groups['all'] }}"
+  with_items: "{{ groups['clusters'] }}"
 
 - name: what is role
   debug:
     var: kubernetes_role
 
-- include_tasks: node-setup.yml
-  when: kubernetes_role == 'node'  and (kubernetes_install_only is not defined)
-
 - include_tasks: master-node-setup.yml
   when: kubernetes_role == 'master'  and (kubernetes_install_only is not defined) and inventory_hostname != kubernetes_master_node
 
-- name: Start all KeepAlive on nodes not primary master
-  shell: systemctl start keepalived
-  ignore_errors: true 
-  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
-        and ( inventory_hostname != kubernetes_master_node )
-
-- name: Start all KeepAlive on nodes not primary master
-  set_fact:
-    metal_lb_config: |
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          namespace: metallb-system
-          name: config
-        data:
-          config: |
-            address-pools:
-            - name: default
-              protocol: layer2
-              addresses:
-              - {{ kubernetes_loadbalancer_vips }}
-  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
-        and inventory_hostname == kubernetes_master_node
-        and kubernetes_loadbalancer_vips is defined
-
-- name: Creates tmp (if not exist)
-  file:
-    path: "/tmp"
-    state: directory
-  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
-        and inventory_hostname == kubernetes_master_node
-        and kubernetes_loadbalancer_vips is defined
-        
-- name: write-metal_lb_config-file
-  copy: 
-    content: "{{ metal_lb_config }}"
-    dest: "/tmp/metal_lb_config.yaml"
-  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
-        and inventory_hostname == kubernetes_master_node
-        and kubernetes_loadbalancer_vips is defined
-  
-- name: Start all KeepAlive on nodes not primary master
-  shell: "kubectl apply -f /tmp/metal_lb_config.yaml "
-  when: metal_lb_config is defined
+- include_tasks: node-setup.yml
+  when: kubernetes_role == 'node'  and (kubernetes_install_only is not defined)

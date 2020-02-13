@@ -1,4 +1,11 @@
 ---
+- name: Stop all KeepAlive on nodes not primary master when not setup
+  shell: systemctl stop keepalived
+  ignore_errors: true 
+  when: kubernetes_role == 'master' 
+        and (kubernetes_install_only is not defined) 
+        and ( inventory_hostname != kubernetes_master_node )
+
 
 - name: Initialize Kubernetes master with kubeadm init.
   command: >
@@ -17,20 +24,21 @@
     content: "{{ results.stdout | regex_search('(?:--certificate-key) (?:)(.{1,})' | string) | regex_replace('--certificate-key ','') }}"
     dest: "{{ kubernetes_secrets_dir }}{{kubernetes_cluster_name}}_cert_key.key"
   delegate_to: 127.0.0.1
+  become: yes
 
 - name: read aconfig
   shell: cat /etc/kubernetes/admin.conf
   register: admin_conf
   become: yes
   when: inventory_hostname in groups['kubernetes-master']
-
   
-- name: write-key-file
+- name: write-config-file
   copy: 
     content: "{{ admin_conf.stdout }}"
     dest: "{{ kubernetes_secrets_dir }}{{kubernetes_cluster_name}}_config"
   delegate_to: 127.0.0.1
   when: admin_conf is defined and inventory_hostname in groups['kubernetes-master']
+  become: yes
 
 - name: Ensure .kube directory exists.
   file:
@@ -42,14 +50,6 @@
     src: /etc/kubernetes/admin.conf
     dest: ~/.kube/config
     state: link
-
-# - name: debug results
-#   debug:
-#     var: results
-
-# - fail:
-#     msg: Just failing because.
-#   when: results is defined
 
 - name: Configure Post Init YAML networking.
   command: "kubectl apply -f {{ item.local_address }}"
@@ -90,3 +90,52 @@
   until: result.stdout.find("Ready") != -1
   retries: 5
   delay: 20
+
+- name: Re-Start all KeepAlive on nodes
+  shell: systemctl restart keepalived
+  ignore_errors: true 
+  when: kubernetes_role == 'master' 
+        and (kubernetes_install_only is not defined) 
+        and ( inventory_hostname != kubernetes_master_node )
+  
+- name: Start all KeepAlive on nodes not primary master
+  set_fact:
+    metal_lb_config: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          namespace: metallb-system
+          name: config
+        data:
+          config: |
+            address-pools:
+            - name: default
+              protocol: layer2
+              addresses:
+              - {{ kubernetes_loadbalancer_vips }}
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and inventory_hostname == kubernetes_master_node
+        and kubernetes_loadbalancer_vips is defined
+
+- name: Creates tmp (if not exist)
+  file:
+    path: "/tmp"
+    state: directory
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and inventory_hostname == kubernetes_master_node
+        and kubernetes_loadbalancer_vips is defined
+        
+- name: write-metal_lb_config-file
+  copy: 
+    content: "{{ metal_lb_config }}"
+    dest: "/tmp/metal_lb_config.yaml"
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and inventory_hostname == kubernetes_master_node
+        and kubernetes_loadbalancer_vips is defined
+  
+- name: Start all KeepAlive on nodes not primary master
+  shell: "kubectl apply -f /tmp/metal_lb_config.yaml "
+  when: metal_lb_config is defined
+
+
+

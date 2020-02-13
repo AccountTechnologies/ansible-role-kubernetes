@@ -1,4 +1,5 @@
 ---
+
 - name: Join master node to Kubernetes master
   shell: >
     {{ kubernetes_join_command }} 
@@ -8,9 +9,5 @@
     creates=/etc/kubernetes/kubelet.conf
   when: k_master_state_self is not defined or k_master_state_self != "ready"
 
-# - name: Join master node to Kubernetes master
-#   shell: >
-#     {{ kubernetes_join_command }} 
-#     --control-plane
-#     creates=/etc/kubernetes/kubelet.conf
-#   when: k_master_state_self is not defined or k_master_state_self != "ready"
+
+
