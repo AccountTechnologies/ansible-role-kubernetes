@@ -30,7 +30,7 @@
       {%- set _cluster={'name': kubernetes_cluster_name , 'hosts': [] } -%}
       {%- if kubernetes_nodes_output is defined -%}
         {%- for item in kubernetes_nodes_output.stdout_lines -%}
-          {%- set _ = _cluster.hosts.append({'host': (item.split('  ')[0]|trim) , 'state': (item.split('  ')[1]|lower|trim) , 'node_type': (item.split('  ')[2]|lower|trim) }) -%}
+          {%- set _ = _cluster.hosts.append({'host': (item.split()[0]|trim) , 'state': (item.split()[1]|lower|trim) , 'node_type': (item.split()[2]|lower|trim) }) -%}
         {%- endfor -%}
       {%- endif -%}
       {%-   set ns = namespace(host_found=false) -%}
