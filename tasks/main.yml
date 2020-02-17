@@ -128,6 +128,7 @@
   set_fact:
     kubernetes_join_command: "{{ kubernetes_join_command_result.stdout }}"
   when: kubernetes_join_command_result.stdout is defined  and (kubernetes_install_only is not defined)
+          and hostvars[item]['k_master'] is defined
           and hostvars[item]['k_master'] == inventory_hostname
   delegate_to: "{{ item }}"
   delegate_facts: true
