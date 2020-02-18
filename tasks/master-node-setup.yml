@@ -9,5 +9,9 @@
     creates=/etc/kubernetes/kubelet.conf
   when: k_master_state_self is not defined or k_master_state_self != "ready"
 
+- name: Allow pods on master node (if configured).
+  command: "kubectl taint nodes --all node-role.kubernetes.io/master-"
+  when:
+    - kubernetes_allow_pods_on_master | bool
 
 
