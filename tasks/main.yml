@@ -138,8 +138,10 @@
   debug:
     var: kubernetes_role
 
-- include_tasks: master-node-setup.yml
+- name: master-node-setup.yml
+  include_tasks: master-node-setup.yml
   when: kubernetes_role == 'master'  and (kubernetes_install_only is not defined) and inventory_hostname != kubernetes_master_node
 
-- include_tasks: node-setup.yml
+- name: node-setup.yml
+  include_tasks: node-setup.yml
   when: kubernetes_role == 'node'  and (kubernetes_install_only is not defined) and k_master_state_self != "ready"
