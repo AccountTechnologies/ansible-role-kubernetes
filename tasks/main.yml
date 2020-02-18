@@ -7,10 +7,12 @@
   include_vars: "{{ ansible_os_family }}.yml"
   when: kubernetes_install_only is not defined or kubernetes_install_only == true
 
-- include_tasks: setup-RedHat.yml
+- name: setup-RedHat.yml
+  include_tasks: setup-RedHat.yml
   when: ansible_os_family == 'RedHat' and (kubernetes_install_only is not defined or kubernetes_install_only == true)
 
-- include_tasks: setup-Debian.yml
+- name: setup-Debian.yml
+  include_tasks: setup-Debian.yml
   when: ansible_os_family == 'Debian' and (kubernetes_install_only is not defined or kubernetes_install_only == true)
 
 # - fail:
@@ -51,7 +53,8 @@
 #   when: kubernetes_install_only is not defined
 
 
-- include_tasks: kubelet-setup.yml
+- name: kubelet-setup.yml
+  include_tasks: kubelet-setup.yml
   when: kubernetes_install_only is not defined
 
 # - fail:
@@ -111,7 +114,8 @@
     var: kubernetes_master_node 
 
 # Set up master.
-- include_tasks: master-setup.yml
+- name: master-setup.yml
+  include_tasks: master-setup.yml
   when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
         and ( inventory_hostname == kubernetes_master_node )
         and (kubernetes_master_node_state != 'ready')
