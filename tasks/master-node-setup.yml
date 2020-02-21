@@ -6,12 +6,19 @@
     --control-plane
     --certificate-key={{ lookup('file', '{{ kubernetes_secrets_dir }}{{kubernetes_cluster_name}}_cert_key.key') }}
     --apiserver-advertise-address={{hostvars[inventory_hostname].internal_network_ip}}
-    creates=/etc/kubernetes/kubelet.conf
+    --ignore-preflight-errors={{ kubernetes_ignore_preflight_errors }}
+  args:
+    creates: /etc/kubernetes/kubelet.conf
   when: k_master_state_self is not defined or k_master_state_self != "ready"
+  register: join_master_out
+  become: yes
+  
+# - name: master join
+#   debug:
+#     var: join_master_out
 
-- name: Allow pods on master node (if configured).
-  command: "kubectl taint nodes --all node-role.kubernetes.io/master-"
-  when:
-    - kubernetes_allow_pods_on_master | bool
+- name: install master-node-common.yml
+  include_tasks: master-node-common.yml
+
 
 

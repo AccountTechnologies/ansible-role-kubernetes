@@ -11,3 +11,4 @@
   register: kubeadmin_init
   failed_when: false
   when: not kubernetes_init_stat.stat.exists
+  become: yes

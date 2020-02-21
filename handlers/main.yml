@@ -1,3 +1,12 @@
 ---
 - name: restart kubelet
   service: name=kubelet state=restarted
+  become: yes
+
+- name: restart docker
+  service: name=docker state=restarted
+  become: yes
+
+- name: restart iscsid
+  service: name=iscsid state=restarted
+  become: yes

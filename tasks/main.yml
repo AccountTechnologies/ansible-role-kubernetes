@@ -15,18 +15,9 @@
   include_tasks: setup-Debian.yml
   when: ansible_os_family == 'Debian' and (kubernetes_install_only is not defined or kubernetes_install_only == true)
 
-# - fail:
-#     msg: "stop here to check"
-#   when: kubernetes_install_only is not defined
-
-- name: Ensure dependencies are installed.
+- name: Ensure dependencies are installed (curl).
   package: name=curl state=present
   when: kubernetes_install_only is not defined or kubernetes_install_only == true
-
-# - fail:
-#     msg: "stop here to check"
-#   when: kubernetes_install_only is not defined
-
 
 - name: Install Kubernetes packages.
   package:
@@ -34,11 +25,11 @@
     state: "{{ item.state | default('present') }}"
   with_items: "{{ kubernetes_packages | json_query(\"[?name=='kubeadm']\")  }}"
   when: kubernetes_install_only is not defined or kubernetes_install_only == true
+  become: yes
 
-# - fail:
-#     msg: "stop here to check"
-#   when: kubernetes_install_only is not defined
-
+- name: install longhorn longhorn-node-setup.yml
+  include_tasks: longhorn-node-setup.yml
+  when: kubernetes_install_longhorn is defined and kubernetes_install_only is not defined
 
 - name: Install Kubernetes packages.
   package:
@@ -47,20 +38,11 @@
   notify: restart kubelet
   with_items: "{{ kubernetes_packages }}"
   when: kubernetes_install_only is not defined
-
-# - fail:
-#     msg: "stop here to check"
-#   when: kubernetes_install_only is not defined
-
+  become: yes
 
 - name: kubelet-setup.yml
   include_tasks: kubelet-setup.yml
   when: kubernetes_install_only is not defined
-
-# - fail:
-#     msg: "stop here to check"
-#   when: kubernetes_install_only is not defined
-
 
 - name: Ensure kubelet is started and enabled at boot.
   service:
@@ -69,20 +51,10 @@
     enabled: true
   when: kubernetes_install_only is not defined
 
-# - fail:
-#     msg: "stop here to check"
-#   when: kubernetes_install_only is not defined
-
-
 - name: Get current cluster state
   include_tasks: find-cluster-state.yml
   #when: (kubernetes_install_only is not defined) 
   when: inventory_hostname in groups['clusters'] and kubernetes_install_only is not defined
-
-# - fail:
-#     msg: "stop here to check"
-#   when: kubernetes_install_only is not defined
-
 
 - name: Get k_master
   debug:

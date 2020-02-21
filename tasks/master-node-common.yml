@@ -1,0 +1,33 @@
+
+- name: node-common.yml
+  include_tasks: node-common.yml
+
+- name: Ensure .kube directory exists.
+  file:
+    path: ~/.kube
+    state: directory
+
+- name: copy the kubectl admin.conf to ~/.kube/config.
+  shell: "sudo cp -f /etc/kubernetes/admin.conf ~/.kube/config"
+  register: cp_output
+
+- name: Symlink the kubectl admin.conf to ~/.kube/conf.
+  shell: "sudo chmod +r ~/.kube/config"
+  register: chmod_output
+
+- name: Allow pods on master node (if configured).
+  command: "kubectl taint nodes --all node-role.kubernetes.io/master-"
+  when:
+    - kubernetes_allow_pods_on_master | bool
+  ignore_errors: yes
+
+- name: update reliability settins node-monitor-period in /etc/kubernetes/manifests/kube-controller-manager.yaml
+  lineinfile:
+    path: /etc/kubernetes/manifests/kube-controller-manager.yaml
+    regexp: '^    - --node-monitor-period=[0-9]{1,}s'
+    insertafter: '^    - kube-controller-manager'
+    line: '    - --node-monitor-period={{kubernetes_node_monitor_period}}s'
+  when:
+    - kubernetes_node_monitor_period is defined
+  notify: restart docker
+  become: yes

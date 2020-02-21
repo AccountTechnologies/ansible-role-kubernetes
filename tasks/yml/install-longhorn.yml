@@ -1,0 +1,13 @@
+---
+## longhorm
+- name: Longhorn
+  template:
+    src: longhorn.j2
+    dest: /tmp/longhorn_config.yaml
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and inventory_hostname == kubernetes_master_node
+  register: longhorn_config_out
+
+- name: Apply LongHorn Config
+  shell: "kubectl apply -f /tmp/longhorn_config.yaml "
+  when: longhorn_config_out is defined

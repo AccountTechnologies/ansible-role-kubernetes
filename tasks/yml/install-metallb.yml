@@ -1,0 +1,15 @@
+---
+## metal lb
+
+- name: Metal LB
+  template:
+    src: metallb.j2
+    dest: /tmp/metal_lb_config.yaml
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+        and inventory_hostname == kubernetes_master_node
+        and kubernetes_loadbalancer_vips is defined
+  register: metal_lb_config_out
+
+- name: Apply MetalLB Config
+  shell: "kubectl apply -f /tmp/metal_lb_config.yaml "
+  when: metal_lb_config_out is defined

@@ -1,0 +1,16 @@
+#KUBELET_KUBEADM_ARGS="--cgroup-driver=systemd --network-plugin=cni --pod-infra-container-image=k8s.gcr.io/pause:3.1 --resolv-conf=/run/systemd/resolve/resolv.conf"
+- name: read the kubeadm-flags.env file
+  shell: cat /var/lib/kubelet/kubeadm-flags.env
+  register: kubeadm_flag_contents
+  become: yes
+
+- name: update reliability settins node-status-update-frequency in cat 
+  lineinfile:
+    path: /var/lib/kubelet/kubeadm-flags.env
+    regexp: '^(KUBELET_KUBEADM_ARGS=".*)(")$'
+    line: '\1 --node-status-update-frequency={{kubernetes_node_status_update_frequency}}s \2'
+    backrefs: yes
+  when: kubeadm_flag_contents.stdout.find('--node-status-update-frequency') == -1    
+        and kubernetes_node_status_update_frequency is defined
+  notify: restart kubelet
+  become: yes

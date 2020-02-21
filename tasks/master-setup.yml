@@ -16,8 +16,14 @@
     --kubernetes-version={{ kubernetes_version_kubeadm }}
     --ignore-preflight-errors={{ kubernetes_ignore_preflight_errors }}
     --upload-certs
+    --service-dns-domain={{kubernetes_cluster_name}}
     {{ kubernetes_kubeadm_init_extra_opts }}
   register: results
+  become: yes
+
+# - name: mater init
+#   debug:
+#     var: results
 
 - name: write-key-file
   copy: 
@@ -40,28 +46,15 @@
   when: admin_conf is defined and inventory_hostname in groups['kubernetes-master']
   #become: yes
 
-- name: Ensure .kube directory exists.
-  file:
-    path: ~/.kube
-    state: directory
-
-- name: Symlink the kubectl admin.conf to ~/.kube/conf.
-  file:
-    src: /etc/kubernetes/admin.conf
-    dest: ~/.kube/config
-    state: link
-
+- name: install master-node-common.yml
+  include_tasks: master-node-common.yml
+  
 - name: Configure Post Init YAML networking.
   command: "kubectl apply -f {{ item.local_address }}"
   with_items:
     - "{{ kuberbetes_yaml }}"
-  register: flannel_result
-  changed_when: "'created' in flannel_result.stdout"
-
-- name: Allow pods on master node (if configured).
-  command: "kubectl taint nodes --all node-role.kubernetes.io/master-"
-  when:
-    - kubernetes_allow_pods_on_master | bool
+  register: kuberbetes_yaml_result
+  changed_when: "'created' in kuberbetes_yaml_result.stdout"
 
 - name: Check if Kubernetes Dashboard UI service already exists.
   shell: kubectl get services --namespace kube-system | grep -q kubernetes-dashboard
@@ -94,25 +87,6 @@
   when: kubernetes_role == 'master' 
         and (kubernetes_install_only is not defined) 
         and ( inventory_hostname != kubernetes_master_node )
-  
-- name: Start all KeepAlive on nodes not primary master
-  set_fact:
-    metal_lb_config: |
-        apiVersion: v1
-        kind: ConfigMap
-        metadata:
-          namespace: metallb-system
-          name: config
-        data:
-          config: |
-            address-pools:
-            - name: default
-              protocol: layer2
-              addresses:
-              - {{ kubernetes_loadbalancer_vips }}
-  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
-        and inventory_hostname == kubernetes_master_node
-        and kubernetes_loadbalancer_vips is defined
 
 - name: Creates tmp (if not exist)
   file:
@@ -120,19 +94,18 @@
     state: directory
   when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
         and inventory_hostname == kubernetes_master_node
-        and kubernetes_loadbalancer_vips is defined
-        
-- name: write-metal_lb_config-file
-  copy: 
-    content: "{{ metal_lb_config }}"
-    dest: "/tmp/metal_lb_config.yaml"
-  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
-        and inventory_hostname == kubernetes_master_node
-        and kubernetes_loadbalancer_vips is defined
-  
-- name: Start all KeepAlive on nodes not primary master
-  shell: "kubectl apply -f /tmp/metal_lb_config.yaml "
-  when: metal_lb_config is defined
+#        and kubernetes_loadbalancer_vips is defined
 
+#metallb
+- name: install yml/install-metallb.yml
+  include_tasks: yml/install-metallb.yml
+  when: kubernetes_role == 'master' and (kubernetes_install_only is not defined) 
+          and inventory_hostname == kubernetes_master_node
+          and kubernetes_loadbalancer_vips is defined
+
+## longhorn
+- name: install yml/install-longhorn.yml
+  include_tasks: yml/install-longhorn.yml
+  when: kubernetes_install_longhorn is defined and kubernetes_install_only is not defined
 
 

@@ -1,0 +1,34 @@
+
+
+
+- name: Ensure dependencies are installed (open-iscsi).
+  package: name=open-iscsi state=present
+  when: kubernetes_install_only is not defined or kubernetes_install_only == true
+  become: yes
+
+- name: Ensure dependencies are installed(jq).
+  package: name=jq state=present
+  when: kubernetes_install_only is not defined or kubernetes_install_only == true
+  become: yes
+
+- name: Comment out iscsid.startup = /bin/systemctl start iscsid.socket
+  replace:
+    dest: /etc/iscsi/iscsid.conf
+    regexp: '^iscsid.startup = /bin/systemctl start iscsid.socket'
+    replace: '# iscsid.startup = /bin/systemctl start iscsid.socket'
+  become: yes
+
+- name: UnComment iscsid.startup = /sbin/iscsid
+  replace:
+    dest: /etc/iscsi/iscsid.conf
+    regexp: '^# iscsid.startup = /sbin/iscsid'
+    replace: 'iscsid.startup = /sbin/iscsid'
+  notify: restart kubelet
+  become: yes
+
+- name: Ensure iscsid is started and enabled at boot.
+  service:
+    name: iscsid
+    state: started
+    enabled: true
+  become: yes
