@@ -18,6 +18,7 @@
 - name: Ensure dependencies are installed (curl).
   package: name=curl state=present
   when: kubernetes_install_only is not defined or kubernetes_install_only == true
+  become: yes
 
 - name: Install Kubernetes packages.
   package:
@@ -50,7 +51,7 @@
     state: started
     enabled: true
   when: kubernetes_install_only is not defined
-
+  becon
 - name: Get current cluster state
   include_tasks: find-cluster-state.yml
   #when: (kubernetes_install_only is not defined) 
