@@ -51,7 +51,8 @@
     state: started
     enabled: true
   when: kubernetes_install_only is not defined
-  becon
+  become: yes 
+  
 - name: Get current cluster state
   include_tasks: find-cluster-state.yml
   #when: (kubernetes_install_only is not defined) 
