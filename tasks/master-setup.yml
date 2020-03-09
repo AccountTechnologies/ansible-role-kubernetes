@@ -12,6 +12,7 @@
     kubeadm init 
     --pod-network-cidr={{ kubernetes_pod_network_cidr }}
     --apiserver-advertise-address={{hostvars[inventory_hostname].internal_network_ip}}
+    --apiserver-cert-extra-sans={{kubernetes_cluster_name}}
     --control-plane-endpoint={{ kubernetes_master_vip }}:6443
     --kubernetes-version={{ kubernetes_version_kubeadm }}
     --ignore-preflight-errors={{ kubernetes_ignore_preflight_errors }}
